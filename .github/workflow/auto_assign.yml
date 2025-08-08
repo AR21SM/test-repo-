@@ -1,0 +1,65 @@
+on:
+  pull_request:
+    types: [opened]
+
+permissions:
+  issues: write
+  pull-requests: read
+
+jobs:
+  assign-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract issue number from PR body and commits, then assign
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const prNumber = context.payload.pull_request.number;
+            const assignee = context.payload.pull_request.user.login;
+
+            const issueNumbers = new Set();
+            const pattern = /(?:closes|fixes|resolves)\s+#(\d+)/gi;
+
+            const prBody = context.payload.pull_request.body;
+            if (prBody) {
+              for (const match of prBody.matchAll(pattern)) {
+                issueNumbers.add(match[1]);
+              }
+            }
+
+            const { data: commits } = await github.rest.pulls.listCommits({
+              owner,
+              repo,
+              pull_number: prNumber,
+            });
+
+            for (const commit of commits) {
+              const commitMessage = commit.commit.message;
+              if (commitMessage) {
+                for (const match of commitMessage.matchAll(pattern)) {
+                  issueNumbers.add(match[1]);
+                }
+              }
+            }
+
+            if (issueNumbers.size === 0) {
+              console.log('No linked issues found in PR body or commit messages.');
+              return;
+            }
+
+            for (const issueNumber of issueNumbers) {
+              console.log(Assigning issue #${issueNumber} to @${assignee});
+              try {
+                await github.rest.issues.addAssignees({
+                  owner,
+                  repo,
+                  issue_number: issueNumber,
+                  assignees: [assignee]
+                });
+                console.log(Successfully assigned issue #${issueNumber} to @${assignee});
+              } catch (error) {
+                console.log(Failed to assign issue #${issueNumber}: ${error.message});
+              }
+            }
