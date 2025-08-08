@@ -1,3 +1,5 @@
+name: Auto-assign issues from PR
+
 on:
   pull_request:
     types: [opened]
@@ -22,6 +24,7 @@ jobs:
             const issueNumbers = new Set();
             const pattern = /(?:closes|fixes|resolves)\s+#(\d+)/gi;
 
+            // 1. Check the Pull Request body for linked issues
             const prBody = context.payload.pull_request.body;
             if (prBody) {
               for (const match of prBody.matchAll(pattern)) {
@@ -29,9 +32,10 @@ jobs:
               }
             }
 
+            // 2. Check all Commit messages for linked issues
             const { data: commits } = await github.rest.pulls.listCommits({
-              owner,
-              repo,
+              owner: owner,
+              repo: repo,
               pull_number: prNumber,
             });
 
@@ -43,20 +47,22 @@ jobs:
                 }
               }
             }
-
+            
+            // 3. Exit early if no issues were found
             if (issueNumbers.size === 0) {
               console.log('No linked issues found in PR body or commit messages.');
               return;
             }
 
+            // 4. Assign all unique issues that were found
             for (const issueNumber of issueNumbers) {
               console.log(`Assigning issue #${issueNumber} to @${assignee}`);
               try {
                 await github.rest.issues.addAssignees({
-                  owner,
-                  repo,
+                  owner: owner,
+                  repo: repo,
                   issue_number: issueNumber,
-                  assignees: [assignee]
+                  assignees: [assignee],
                 });
                 console.log(`Successfully assigned issue #${issueNumber} to @${assignee}`);
               } catch (error) {
