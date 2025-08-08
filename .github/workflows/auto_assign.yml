@@ -1,7 +1,7 @@
-name: Auto-claim issues from PR
+name: Auto-assign issues from PR
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened]
 
 permissions:
@@ -9,18 +9,18 @@ permissions:
   pull-requests: read
 
 jobs:
-  claim-issue:
+  assign-issue:
     runs-on: ubuntu-latest
     steps:
-      - name: Comment on linked issues
+      - name: Extract issue number from PR body and commits, then assign
         uses: actions/github-script@v7
         with:
+          token: ${{ secrets.Assign_TOKEN }}
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const prNumber = context.payload.pull_request.number;
-            const user = context.payload.pull_request.user.login;
-            const prUrl = context.payload.pull_request.html_url;
+            const assignee = context.payload.pull_request.user.login;
 
             const issueNumbers = new Set();
             const pattern = /(?:closes|fixes|resolves)\s+#(\d+)/gi;
@@ -52,19 +52,17 @@ jobs:
               return;
             }
 
-            const commentBody = `**Issue claimed!**\n\nContributor @${user} has opened a pull request that addresses this issue: ${prUrl}\n\nTo avoid duplicate work, please check the PR before starting.`;
-
             for (const issueNumber of issueNumbers) {
-              console.log(`Adding comment to issue #${issueNumber}`);
+              console.log(`Assigning issue #${issueNumber} to @${assignee}`);
               try {
-                await github.rest.issues.createComment({
+                await github.rest.issues.addAssignees({
                   owner: owner,
                   repo: repo,
                   issue_number: issueNumber,
-                  body: commentBody,
+                  assignees: [assignee],
                 });
-                console.log(`Successfully commented on issue #${issueNumber}`);
+                console.log(`Successfully assigned issue #${issueNumber} to @${assignee}`);
               } catch (error) {
-                console.log(`Failed to comment on issue #${issueNumber}: ${error.message}`);
+                console.log(`Failed to assign issue #${issueNumber}: ${error.message}`);
               }
             }
