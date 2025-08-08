@@ -1,5 +1,3 @@
-name: Auto-assign issues from PR
-
 on:
   pull_request:
     types: [opened]
@@ -45,7 +43,7 @@ jobs:
                 }
               }
             }
-            
+
             if (issueNumbers.size === 0) {
               console.log('No linked issues found in PR body or commit messages.');
               return;
