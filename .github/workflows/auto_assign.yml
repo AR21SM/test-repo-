@@ -12,37 +12,65 @@ jobs:
   comment-on-issue:
     runs-on: ubuntu-latest
     steps:
-      - name: Comment on linked issue
+      - name: Comment on linked issue from PR body or commits
         uses: actions/github-script@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
+            const prNumber = context.payload.pull_request.number;
             const prAuthor = context.payload.pull_request.user.login;
             const prLink = context.payload.pull_request.html_url;
 
-            // Regex to find keywords like "fixes #123"
             const pattern = /(?:closes|fixes|resolves)\s+#(\d+)/gi;
             const issueNumbers = new Set();
-
+            
             const prBody = context.payload.pull_request.body;
             if (prBody) {
               for (const match of prBody.matchAll(pattern)) {
                 issueNumbers.add(match[1]);
               }
             }
+            const { data: commits } = await github.rest.pulls.listCommits({
+              owner,
+              repo,
+              pull_number: prNumber,
+            });
+
+            for (const commit of commits) {
+              const commitMessage = commit.commit.message;
+              if (commitMessage) {
+                for (const match of commitMessage.matchAll(pattern)) {
+                  issueNumbers.add(match[1]);
+                }
+              }
+            }
 
             if (issueNumbers.size === 0) {
-              console.log('No linked issues found in PR body.');
+              console.log('No linked issues found in PR body or commit messages.');
               return;
             }
             
             for (const issueNumber of issueNumbers) {
-              // This action will now run for EVERYONE, collaborators and non-collaborators alike.
+              // Check if a comment has already been made for this issue by our action
+              const { data: comments } = await github.rest.issues.listComments({
+                owner,
+                repo,
+                issue_number: issueNumber,
+              });
+
+              const botCommentIdentifier = "Work on this issue has started";
+              const alreadyCommented = comments.some(comment => comment.body.includes(botCommentIdentifier));
+
+              if (alreadyCommented) {
+                console.log(`Issue #${issueNumber} has already been notified about a PR. Skipping.`);
+                continue; // Move to the next issue number
+              }
+
               console.log(`Commenting on issue #${issueNumber} to acknowledge PR from @${prAuthor}.`);
               try {
-                const commentBody = `Work on this issue has started!  \n\nContributor @${prAuthor} has opened pull request ${prLink} to address it.`;
+                const commentBody = `Work on this issue has started!\n\nContributor @${prAuthor} has opened pull request ${prLink} to address it.`;
                 await github.rest.issues.createComment({
                   owner,
                   repo,
