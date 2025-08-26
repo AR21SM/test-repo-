@@ -32,6 +32,7 @@ jobs:
                 issueNumbers.add(match[1]);
               }
             }
+
             const { data: commits } = await github.rest.pulls.listCommits({
               owner,
               repo,
@@ -48,37 +49,33 @@ jobs:
             }
 
             if (issueNumbers.size === 0) {
-              console.log('No linked issues found in PR body or commit messages.');
               return;
             }
             
             for (const issueNumber of issueNumbers) {
-              // Check if a comment has already been made for this issue by our action
               const { data: comments } = await github.rest.issues.listComments({
                 owner,
                 repo,
                 issue_number: issueNumber,
               });
 
-              const botCommentIdentifier = "Work on this issue has started";
+              const botCommentIdentifier = "This issue has been claimed by";
               const alreadyCommented = comments.some(comment => comment.body.includes(botCommentIdentifier));
 
               if (alreadyCommented) {
-                console.log(`Issue #${issueNumber} has already been notified about a PR. Skipping.`);
-                continue; // Move to the next issue number
+                continue;
               }
 
-              console.log(`Commenting on issue #${issueNumber} to acknowledge PR from @${prAuthor}.`);
               try {
-                const commentBody = `Work on this issue has started!\n\nContributor @${prAuthor} has opened pull request ${prLink} to address it.`;
+                const commentBody = `This issue has been claimed by @${prAuthor} via pull request ${prLink}.\n\nTo encourage collaboration, please check with the contributor or a maintainer before opening a new PR for this issue.`;
                 await github.rest.issues.createComment({
                   owner,
                   repo,
                   issue_number: issueNumber,
                   body: commentBody,
                 });
-                console.log(`Successfully commented on issue #${issueNumber}`);
               } catch (error) {
+                // Log error if commenting fails, otherwise the action fails silently.
                 console.log(`Failed to comment on issue #${issueNumber}: ${error.message}`);
               }
             }
