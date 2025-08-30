@@ -86,8 +86,8 @@ jobs:
                 if (alreadyCommented) {
                   continue;
                 }
-                
-                const commentBody = `**Issue Claimed**\n\nThis issue has been claimed by @${prAuthor} via pull request ${prLink}.\n\n### Note for other contributors\nTo avoid duplicate effort, please coordinate with @${prAuthor} or a project maintainer before submitting a new pull request for this issue.`;
+
+                const commentBody = `**Issue Claimed**\n\nThis issue has been claimed by @${prAuthor} via pull request ${prLink}.\n\n**Note for other contributors**\nTo avoid duplicate effort, please coordinate with @${prAuthor} or a project maintainer before submitting a new pull request for this issue.`;
 
                 await github.rest.issues.createComment({
                   owner, repo, issue_number: issueNumber, body: commentBody,
