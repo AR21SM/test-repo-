@@ -2,7 +2,7 @@ name: Auto-comment on issues from PR
 
 on:
   pull_request_target:
-    types: [opened]
+    types: [opened, edited]
 
 permissions:
   issues: write
