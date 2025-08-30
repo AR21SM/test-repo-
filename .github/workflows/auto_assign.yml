@@ -1,7 +1,7 @@
 name: Auto-comment on issues from PR
 
 on:
-  pull_request:
+  pull_request_target:
     types: [opened]
 
 permissions:
@@ -22,16 +22,20 @@ jobs:
             const prNumber = context.payload.pull_request.number;
             const prAuthor = context.payload.pull_request.user.login;
             const prLink = context.payload.pull_request.html_url;
+            const prTitle = context.payload.pull_request.title || '';
 
-            const pattern = /(?:closes|fixes|resolves)\s+#(\d+)/gi;
+            const pattern = /(?:closes|fixes|resolves)\s+#(\d+)|#(\d+)/gi;
             const issueNumbers = new Set();
             
-            const prBody = context.payload.pull_request.body;
-            if (prBody) {
-              for (const match of prBody.matchAll(pattern)) {
-                issueNumbers.add(match[1]);
+            const findIssues = (text) => {
+              if (!text) return;
+              for (const match of text.matchAll(pattern)) {
+                issueNumbers.add(match[1] || match[2]);
               }
-            }
+            };
+
+            findIssues(context.payload.pull_request.body);
+            findIssues(prTitle);
 
             const { data: commits } = await github.rest.pulls.listCommits({
               owner,
@@ -40,12 +44,7 @@ jobs:
             });
 
             for (const commit of commits) {
-              const commitMessage = commit.commit.message;
-              if (commitMessage) {
-                for (const match of commitMessage.matchAll(pattern)) {
-                  issueNumbers.add(match[1]);
-                }
-              }
+              findIssues(commit.commit.message);
             }
 
             if (issueNumbers.size === 0) {
@@ -53,29 +52,42 @@ jobs:
             }
             
             for (const issueNumber of issueNumbers) {
-              const { data: comments } = await github.rest.issues.listComments({
-                owner,
-                repo,
-                issue_number: issueNumber,
-              });
-
-              const botCommentIdentifier = "This issue has been claimed by";
-              const alreadyCommented = comments.some(comment => comment.body.includes(botCommentIdentifier));
-
-              if (alreadyCommented) {
-                continue;
-              }
-
               try {
-                const commentBody = `This issue has been claimed by @${prAuthor} via pull request ${prLink}.\n\nTo encourage collaboration, please check with the contributor or a maintainer before opening a new PR for this issue.`;
-                await github.rest.issues.createComment({
-                  owner,
-                  repo,
-                  issue_number: issueNumber,
-                  body: commentBody,
+                let issue;
+                try {
+                  const { data: issueData } = await github.rest.issues.get({
+                    owner, repo, issue_number: issueNumber,
+                  });
+                  issue = issueData;
+                } catch (error) {
+                  console.log(`Issue #${issueNumber} not found, skipping.`);
+                  continue;
+                }
+
+                if (issue.state !== 'open') {
+                  console.log(`Issue #${issueNumber} is closed, skipping.`);
+                  continue;
+                }
+
+                const { data: comments } = await github.rest.issues.listComments({
+                  owner, repo, issue_number: issueNumber,
                 });
+
+                const botCommentIdentifier = "This issue has been claimed by";
+                const alreadyCommented = comments.some(comment => comment.body.includes(botCommentIdentifier));
+
+                if (alreadyCommented) {
+                  continue;
+                }
+                
+                const commentBody = `**Issue Claimed**\n\nThis issue has been claimed by @${prAuthor} via pull request ${prLink}.\n\nTo encourage collaboration, please check with the contributor or a maintainer before opening a new PR for this issue.`;
+
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: issueNumber, body: commentBody,
+                });
+
               } catch (error) {
-                // Log error if commenting fails, otherwise the action fails silently.
-                console.log(`Failed to comment on issue #${issueNumber}: ${error.message}`);
+                console.log(`Failed to process issue #${issueNumber}: ${error.message}`);
               }
             }
+
