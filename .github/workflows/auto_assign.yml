@@ -8,11 +8,15 @@ permissions:
   issues: write
   pull-requests: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   comment-on-issue:
     runs-on: ubuntu-latest
     steps:
-      - name: Comment on linked issue from PR body or commits
+      - name: Comment on and label linked issue
         uses: actions/github-script@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -50,8 +54,11 @@ jobs:
             if (issueNumbers.size === 0) {
               return;
             }
+
+            const ISSUE_PROCESSING_LIMIT = 10;
+            const issuesToProcess = Array.from(issueNumbers).slice(0, ISSUE_PROCESSING_LIMIT);
             
-            for (const issueNumber of issueNumbers) {
+            for (const issueNumber of issuesToProcess) {
               try {
                 let issue;
                 try {
@@ -74,17 +81,29 @@ jobs:
                 });
 
                 const botCommentIdentifier = "This issue has been claimed by";
-                const alreadyCommented = comments.some(comment => comment.body.includes(botCommentIdentifier));
+                const alreadyCommented = comments.some(comment => comment.body && comment.body.includes(botCommentIdentifier));
 
                 if (alreadyCommented) {
                   continue;
                 }
                 
-                const commentBody = `**Issue Claimed**\n\nThis issue has been claimed by @${prAuthor} via pull request ${prLink}.\n\nTo encourage collaboration, please check with the contributor or a maintainer before opening a new PR for this issue.`;
+                const commentBody = `**Issue Claimed**\n\nThis issue has been claimed by @${prAuthor} via pull request ${prLink}.\n\n**Note for other contributors:** To avoid duplicate effort, please coordinate with @${prAuthor} or a project maintainer before submitting a new pull request for this issue.`;
 
                 await github.rest.issues.createComment({
                   owner, repo, issue_number: issueNumber, body: commentBody,
                 });
+
+                const labelToAdd = 'in progress';
+                try {
+                  await github.rest.issues.addLabels({
+                    owner,
+                    repo,
+                    issue_number: issueNumber,
+                    labels: [labelToAdd]
+                  });
+                } catch (error) {
+                  console.log(`Could not add label "${labelToAdd}" to issue #${issueNumber}.`);
+                }
 
               } catch (error) {
                 console.log(`Failed to process issue #${issueNumber}: ${error.message}`);
